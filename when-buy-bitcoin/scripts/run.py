@@ -16,12 +16,13 @@ try:
     import numpy as np
     import pandas as pd
 except ModuleNotFoundError as exc:
-    requirement_path = pathlib.Path(__file__).resolve().parents[1] / "requirements.txt"
+    skill_dir = pathlib.Path(__file__).resolve().parents[1]
     print(
         "Missing Python dependency: "
-        f"{exc.name}. Install dependencies with "
-        f"`python -m pip install -r {requirement_path}` or run with "
-        "`uv run --with numpy --with pandas --with requests python ...`.",
+        f"{exc.name}. If uv is available, run with "
+        f"`uv run --project {skill_dir} python {pathlib.Path(__file__).resolve()} ...`. "
+        "If uv is not available, install the fallback requirements with "
+        f"`python -m pip install -r {skill_dir / 'requirements.txt'}`.",
         file=sys.stderr,
     )
     raise SystemExit(2) from exc

@@ -45,6 +45,20 @@ command will be chosen later, so do not assume one fixed command format in the
 skill instructions. When you need to execute the skill manually, prefer the
 bundled script and its flags instead of rewriting the workflow.
 
+If `uv` is available, use `uv` to manage dependencies and run the script. From
+the workspace root, use this pattern:
+
+```bash
+uv run --project when-buy-bitcoin python when-buy-bitcoin/scripts/run.py --offline-sample
+uv run --project when-buy-bitcoin python when-buy-bitcoin/scripts/run.py --self-test
+uv run --project when-buy-bitcoin python when-buy-bitcoin/scripts/run.py --no-onchain
+```
+
+These are manual invocation examples, not a fixed automation command. When the
+skill path differs, pass that path to `--project` and to the script location.
+Run from the workspace root when you want generated artifacts to land under the
+root `output/when-buy-bitcoin/` directory.
+
 Useful script modes:
 
 - `--offline-sample`: create deterministic synthetic BTC data and render a
@@ -55,8 +69,9 @@ Useful script modes:
 - `--output-dir DIR`: choose where `when-buy-bitcoin.html` and
   `when-buy-bitcoin.latest.json` are written.
 
-Runtime dependencies are listed in `requirements.txt`: Python 3.10+, `pandas`,
-`numpy`, and `requests`.
+Runtime dependencies are declared in `pyproject.toml` for `uv`: Python 3.10+,
+`pandas`, `numpy`, and `requests`. `requirements.txt` is kept as a compatibility
+fallback for environments where `uv` is not available.
 
 ## Outputs
 
