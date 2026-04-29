@@ -25,16 +25,19 @@ record the status in SQLite and continue.
 From this skill directory:
 
 ```bash
-python scripts/sync_telegram_channel.py doctor --env .env
-python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567
-python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567 --since-hours 24
+uv run --with telethon --with python-dotenv \
+  python scripts/sync_telegram_channel.py doctor --env .env
+uv run --with telethon --with python-dotenv \
+  python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567
+uv run --with telethon --with python-dotenv \
+  python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567 --since-hours 24
 ```
 
 Install runtime dependencies if `doctor` reports they are missing. Prefer `uv`
 when it is available:
 
 ```bash
-uv add telethon python-dotenv
+uv run --with telethon --with python-dotenv python scripts/sync_telegram_channel.py doctor --env .env
 ```
 
 Without `uv`, use:
@@ -43,22 +46,28 @@ Without `uv`, use:
 python -m pip install telethon python-dotenv
 ```
 
-The first `sync` run may prompt for a Telegram login code and 2FA password.
-Later runs reuse `TG_SESSION_PATH`; keep that session file private.
+The first `sync` run creates `TG_SESSION_PATH` through phone-code login using
+`TG_PHONE`. Telegram may ask for a login code and cloud password. Later runs
+reuse `TG_SESSION_PATH`; keep that session file private.
 
 ## .env Template
 
-Required:
+Always required:
 
 ```dotenv
 TG_API_ID=123456
 TG_API_HASH=your_api_hash_from_my_telegram_org
 ```
 
-Optional:
+Required for first login when `TG_SESSION_PATH` is not already authorized:
 
 ```dotenv
 TG_PHONE=+15551234567
+```
+
+Optional:
+
+```dotenv
 TG_CHANNEL=@channel_username_or_numeric_id_or_t_me_link
 TG_DB_PATH=./telegram_sync.sqlite3
 TG_MEDIA_DIR=./telegram_media
@@ -82,9 +91,8 @@ Explain missing `TG_API_ID` and `TG_API_HASH` plainly: the user gets them from
 `TG_SESSION_PATH` defaults to `./telegram_sync.session`; the user does not get
 it from Telegram. It is the local Telethon session file created on first login.
 
-`TG_PHONE` is optional. If it is absent and there is no existing session file,
-Telethon will prompt for a phone number during interactive login. For automated
-runs, set `TG_PHONE`.
+`TG_PHONE` is required to create a new session. It may be omitted only when
+`TG_SESSION_PATH` already points to an authorized Telethon session.
 
 `TG_CHANNEL` is optional when the user passes the channel as a command argument
 or with `--channel`. This is useful when the user may provide arbitrary channel
@@ -172,7 +180,7 @@ python scripts/sync_telegram_channel.py doctor --env .env
 If Telethon is missing, install:
 
 ```bash
-uv add telethon python-dotenv
+uv run --with telethon --with python-dotenv python scripts/sync_telegram_channel.py doctor --env .env
 ```
 
 or, without `uv`:
@@ -184,6 +192,16 @@ python -m pip install telethon python-dotenv
 If Telegram reports a long FloodWait, do not retry in a loop. Wait for the
 reported seconds, then rerun the same command. The SQLite checkpoint preserves
 progress after each processed message.
+
+If Telegram sends a "data export request" confirmation to the mobile/desktop
+client, ask the user to approve it there, then rerun the sync. Telegram may still
+return `TakeoutInitDelayError`; if so, wait for the reported seconds or rely on
+the script's normal-client fallback.
+
+If Telethon reports that another takeout for the current session is unfinished
+but the local session has an invalid empty takeout marker, the bundled script
+normalizes that marker and continues. This is a local session hygiene issue, not
+a Telegram account ban.
 
 For links like `https://t.me/c/1445373305/27567`, use the link as `TG_CHANNEL`
 or pass it through the script as the positional `CHANNEL` argument or `--channel`.

@@ -22,26 +22,28 @@ python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/144537330
 loads credentials, starts Telethon, resolves the configured channel, initializes
 SQLite, and performs all-time backfill plus incremental continuation.
 
-The first login may prompt for Telegram code and 2FA. Later runs reuse
-`TG_SESSION_PATH`, which should be kept private.
+The first login creates `TG_SESSION_PATH` through phone-code login using
+`TG_PHONE`. Telegram may ask for a login code and cloud password. Later runs
+reuse `TG_SESSION_PATH`, which should be kept private.
 
-When Python dependencies are missing, prefer `uv add telethon python-dotenv` if
-`uv` is available. Fall back to `python -m pip install telethon python-dotenv`
-when it is not.
+When Python dependencies are missing, prefer running the script with
+`uv run --with telethon --with python-dotenv ...` if `uv` is available. Fall
+back to `python -m pip install telethon python-dotenv` when it is not.
 
 ## Data Flow
 
-Configuration comes primarily from `.env`. Required values are only
-`TG_API_ID` and `TG_API_HASH`. `TG_PHONE`, `TG_CHANNEL`, `TG_DB_PATH`,
-`TG_MEDIA_DIR`, and `TG_SESSION_PATH` are optional. Missing or invalid required
-configuration prints a checklist and explains that API credentials come from
-`https://my.telegram.org` under "API Development tools".
+Configuration comes primarily from `.env`. `TG_API_ID` and `TG_API_HASH` are
+always required. `TG_PHONE` is required when creating a new session, but can be
+omitted if `TG_SESSION_PATH` already points to an authorized Telethon session.
+`TG_CHANNEL`, `TG_DB_PATH`, `TG_MEDIA_DIR`, and `TG_SESSION_PATH` are optional.
+Missing or invalid required configuration prints a checklist and explains that
+API credentials come from `https://my.telegram.org` under "API Development
+tools".
 
 Default paths are `./telegram_sync.sqlite3`, `./telegram_media`, and
 `./telegram_sync.session`. `TG_SESSION_PATH` is a local Telethon session path,
 not a value from Telegram. `TG_CHANNEL` can be omitted when the user passes a
-runtime channel argument or `--channel`; `TG_PHONE` can be omitted for
-interactive first login or when an existing session is available.
+runtime channel argument or `--channel`.
 
 SQLite stores channel identity, included messages, media metadata,
 transcription status, and sync checkpoints. Media bytes are written to

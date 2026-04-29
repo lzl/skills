@@ -48,14 +48,18 @@ DEFAULTS = {
     "TG_LOG_LEVEL": "INFO",
 }
 
+TAKEOUT_UNLIMITED_FILE_SIZE = (2**63) - 1
+
 ENV_HELP = """Telegram channel sync requires a .env file with:
 
 Required:
   TG_API_ID=123456
   TG_API_HASH=your_api_hash_from_my_telegram_org
 
-Optional:
+Required for first login when TG_SESSION_PATH is not already authorized:
   TG_PHONE=+15551234567
+
+Optional:
   TG_CHANNEL=@channel_username_or_numeric_id_or_t_me_link
   TG_DB_PATH=./telegram_sync.sqlite3
   TG_MEDIA_DIR=./telegram_media
@@ -73,11 +77,11 @@ Optional:
   TG_LOG_LEVEL=INFO
 
 Get TG_API_ID and TG_API_HASH from https://my.telegram.org -> API Development tools.
-TG_SESSION_PATH defaults to ./telegram_sync.session. The first login may ask for
-a phone number, Telegram login code, and 2FA password. Later runs reuse
-TG_SESSION_PATH, so keep that session file private and stable.
+TG_SESSION_PATH defaults to ./telegram_sync.session. The first login uses
+TG_PHONE and may ask for a Telegram login code and cloud password. Later runs
+reuse TG_SESSION_PATH, so keep that session file private and stable.
 Install runtime dependencies with:
-  uv add telethon python-dotenv
+  uv run --with telethon --with python-dotenv python scripts/sync_telegram_channel.py doctor --env .env
 or, without uv:
   python -m pip install telethon python-dotenv
 """
@@ -232,6 +236,29 @@ def apply_runtime_overrides(
     if since_hours is not None:
         updates["since_hours"] = since_hours if since_hours > 0 else None
     return dataclasses.replace(config, **updates)
+
+
+def missing_phone_for_first_login_message(config: Config) -> str:
+    return (
+        f"No authorized Telegram session was found at {config.session_path}, "
+        "and TG_PHONE is not set. Add TG_PHONE=+15551234567 to .env for the "
+        "first login, then rerun the command. Telegram may also ask for the "
+        "login code and cloud password. After the session file is authorized, "
+        "later runs can reuse TG_SESSION_PATH without TG_PHONE."
+    )
+
+
+async def authorize_client(client: Any, config: Config) -> None:
+    if await client.is_user_authorized():
+        return
+    if not config.phone:
+        raise SetupError(missing_phone_for_first_login_message(config))
+    logging.info(
+        "First login may ask for a Telegram code and cloud password; "
+        "future runs reuse %s.",
+        config.session_path,
+    )
+    await client.start(phone=config.phone)
 
 
 def load_config(env_path: str | pathlib.Path) -> ConfigResult:
@@ -790,7 +817,8 @@ def require_telethon() -> tuple[Any, Any, Any]:
     if importlib.util.find_spec("telethon") is None:
         raise SetupError(
             "Telethon is not installed. Install runtime dependencies with:\n"
-            "  uv add telethon python-dotenv\n"
+            "  uv run --with telethon --with python-dotenv "
+            "python scripts/sync_telegram_channel.py doctor --env .env\n"
             "or, without uv:\n"
             "  python -m pip install telethon python-dotenv"
         )
@@ -1192,6 +1220,29 @@ def takeout_required(config: Config) -> bool:
     return config.use_takeout in {"1", "true", "yes"}
 
 
+def takeout_max_file_size(config: Config) -> int | None:
+    if not config.download_media:
+        return None
+    return config.max_media_bytes or TAKEOUT_UNLIMITED_FILE_SIZE
+
+
+def clear_invalid_takeout_id(client: Any) -> bool:
+    takeout_id = getattr(client.session, "takeout_id", None)
+    if takeout_id is None or type(takeout_id) is int:
+        return False
+    log = logging.debug if takeout_id == b"" else logging.warning
+    log(
+        "Ignoring invalid local Telethon takeout_id %r. Treating this session as "
+        "having no active takeout export.",
+        takeout_id,
+    )
+    client.session.takeout_id = None
+    save = getattr(client.session, "save", None)
+    if callable(save):
+        save()
+    return True
+
+
 async def run_sync(config: Config) -> int:
     TelegramClient, errors, _ = require_telethon()
     configure_logging(config.log_level)
@@ -1203,15 +1254,10 @@ async def run_sync(config: Config) -> int:
 
     try:
         await client.connect()
-        if not await client.is_user_authorized():
-            logging.info(
-                "First login may ask for a phone number, Telegram code, and 2FA password; "
-                "future runs reuse %s.",
-                config.session_path,
-            )
-        await client.start(phone=config.phone)
+        await authorize_client(client, config)
         entity = await resolve_entity(client, config)
         channel_id = upsert_channel(conn, entity, config.channel)
+        clear_invalid_takeout_id(client)
 
         if takeout_enabled(config):
             try:
@@ -1219,9 +1265,7 @@ async def run_sync(config: Config) -> int:
                     channels=True,
                     megagroups=True,
                     files=config.download_media,
-                    max_file_size=(
-                        config.max_media_bytes if config.max_media_bytes else None
-                    ),
+                    max_file_size=takeout_max_file_size(config),
                 ) as takeout:
                     logging.info("Using Telegram takeout session for export-friendly sync.")
                     await sync_channel_history(takeout, conn, entity, channel_id, config)
@@ -1275,7 +1319,13 @@ def command_doctor(args: argparse.Namespace) -> int:
     print(f"Database: {config.db_path}")
     print(f"Media dir: {config.media_dir}")
     print(f"Session: {config.session_path}")
-    print(f"Phone: {config.phone or '(not set; Telethon will prompt on first login)'}")
+    print(
+        "Phone: "
+        + (
+            config.phone
+            or "(not set; required for first login unless session is already authorized)"
+        )
+    )
     print(f"Channel: {config.channel or '(not set; pass CHANNEL/--channel to sync)'}")
     print(f"Join private invite: {config.join_invite}")
     missing: list[str] = []
@@ -1287,7 +1337,8 @@ def command_doctor(args: argparse.Namespace) -> int:
         print(
             "Missing optional/runtime packages: "
             + ", ".join(missing)
-            + "\nInstall with uv: uv add telethon python-dotenv"
+            + "\nRun with uv: uv run --with telethon --with python-dotenv "
+            + "python scripts/sync_telegram_channel.py doctor --env .env"
             + "\nOr without uv: python -m pip install telethon python-dotenv",
             file=sys.stderr,
         )

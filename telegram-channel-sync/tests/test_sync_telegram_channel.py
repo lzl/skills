@@ -40,10 +40,10 @@ class SyncTelegramChannelTests(unittest.TestCase):
         self.assertNotIn("TG_SESSION_PATH", first_line)
         self.assertNotIn("TG_PHONE", first_line)
         self.assertNotIn("TG_CHANNEL", first_line)
-        self.assertIn("uv add telethon python-dotenv", result.message)
+        self.assertIn("uv run --with telethon --with python-dotenv", result.message)
         self.assertIn("python -m pip install telethon python-dotenv", result.message)
 
-    def test_minimal_env_uses_defaults_and_allows_missing_phone_and_channel(self):
+    def test_minimal_env_uses_defaults_and_defers_phone_to_first_login(self):
         sync = load_module()
         import tempfile
 
@@ -66,6 +66,30 @@ class SyncTelegramChannelTests(unittest.TestCase):
         self.assertEqual(result.config.db_path.name, "telegram_sync.sqlite3")
         self.assertEqual(result.config.media_dir.name, "telegram_media")
         self.assertEqual(result.config.session_path.name, "telegram_sync.session")
+
+    def test_missing_phone_message_explains_first_login_requirement(self):
+        sync = load_module()
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_path = pathlib.Path(tmp_dir) / ".env"
+            env_path.write_text(
+                "\n".join(
+                    [
+                        "TG_API_ID=123456",
+                        "TG_API_HASH=0123456789abcdef0123456789abcdef",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            result = sync.load_config(env_path)
+
+        message = sync.missing_phone_for_first_login_message(result.config)
+
+        self.assertIn("TG_PHONE", message)
+        self.assertIn("first login", message)
+        self.assertIn("TG_SESSION_PATH", message)
+        self.assertIn("later runs", message)
 
     def test_validate_env_parses_required_and_optional_values(self):
         sync = load_module()
@@ -187,6 +211,46 @@ class SyncTelegramChannelTests(unittest.TestCase):
         self.assertIs(decision.should_sleep, False)
         self.assertIn("retry after 7200 seconds", decision.message)
 
+    def test_clear_invalid_takeout_id_normalizes_empty_blob(self):
+        sync = load_module()
+        client = FakeClient(FakeSession(takeout_id=b""))
+
+        self.assertTrue(sync.clear_invalid_takeout_id(client))
+        self.assertIsNone(client.session.takeout_id)
+        self.assertTrue(client.session.saved)
+
+    def test_clear_invalid_takeout_id_keeps_valid_integer(self):
+        sync = load_module()
+        client = FakeClient(FakeSession(takeout_id=123456789))
+
+        self.assertFalse(sync.clear_invalid_takeout_id(client))
+        self.assertEqual(client.session.takeout_id, 123456789)
+        self.assertFalse(client.session.saved)
+
+    def test_takeout_max_file_size_uses_signed_int_limit_without_media_cap(self):
+        sync = load_module()
+        config = FakeConfig(download_media=True, max_media_bytes=0)
+
+        self.assertEqual(
+            sync.takeout_max_file_size(config),
+            sync.TAKEOUT_UNLIMITED_FILE_SIZE,
+        )
+
+    def test_takeout_max_file_size_respects_disabled_media_and_explicit_cap(self):
+        sync = load_module()
+
+        self.assertIsNone(
+            sync.takeout_max_file_size(
+                FakeConfig(download_media=False, max_media_bytes=0)
+            )
+        )
+        self.assertEqual(
+            sync.takeout_max_file_size(
+                FakeConfig(download_media=True, max_media_bytes=1024)
+            ),
+            1024,
+        )
+
 
 class FakeMessage:
     id = 1
@@ -239,3 +303,23 @@ class FakeFile:
         self.size = size
         self.name = "document.pdf"
         self.ext = ".pdf"
+
+
+class FakeSession:
+    def __init__(self, takeout_id):
+        self.takeout_id = takeout_id
+        self.saved = False
+
+    def save(self):
+        self.saved = True
+
+
+class FakeClient:
+    def __init__(self, session):
+        self.session = session
+
+
+class FakeConfig:
+    def __init__(self, download_media, max_media_bytes):
+        self.download_media = download_media
+        self.max_media_bytes = max_media_bytes
