@@ -77,6 +77,8 @@ TG_SESSION_PATH defaults to ./telegram_sync.session. The first login may ask for
 a phone number, Telegram login code, and 2FA password. Later runs reuse
 TG_SESSION_PATH, so keep that session file private and stable.
 Install runtime dependencies with:
+  uv add telethon python-dotenv
+or, without uv:
   python -m pip install telethon python-dotenv
 """
 
@@ -788,6 +790,8 @@ def require_telethon() -> tuple[Any, Any, Any]:
     if importlib.util.find_spec("telethon") is None:
         raise SetupError(
             "Telethon is not installed. Install runtime dependencies with:\n"
+            "  uv add telethon python-dotenv\n"
+            "or, without uv:\n"
             "  python -m pip install telethon python-dotenv"
         )
     from telethon import TelegramClient, errors, functions
@@ -1283,7 +1287,8 @@ def command_doctor(args: argparse.Namespace) -> int:
         print(
             "Missing optional/runtime packages: "
             + ", ".join(missing)
-            + "\nInstall with: python -m pip install telethon python-dotenv",
+            + "\nInstall with uv: uv add telethon python-dotenv"
+            + "\nOr without uv: python -m pip install telethon python-dotenv",
             file=sys.stderr,
         )
         return 1

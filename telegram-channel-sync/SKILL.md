@@ -30,7 +30,14 @@ python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/144537330
 python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567 --since-hours 24
 ```
 
-Install runtime dependencies if `doctor` reports they are missing:
+Install runtime dependencies if `doctor` reports they are missing. Prefer `uv`
+when it is available:
+
+```bash
+uv add telethon python-dotenv
+```
+
+Without `uv`, use:
 
 ```bash
 python -m pip install telethon python-dotenv
@@ -163,6 +170,12 @@ python scripts/sync_telegram_channel.py doctor --env .env
 ```
 
 If Telethon is missing, install:
+
+```bash
+uv add telethon python-dotenv
+```
+
+or, without `uv`:
 
 ```bash
 python -m pip install telethon python-dotenv

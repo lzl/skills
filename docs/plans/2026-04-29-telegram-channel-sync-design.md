@@ -25,6 +25,10 @@ SQLite, and performs all-time backfill plus incremental continuation.
 The first login may prompt for Telegram code and 2FA. Later runs reuse
 `TG_SESSION_PATH`, which should be kept private.
 
+When Python dependencies are missing, prefer `uv add telethon python-dotenv` if
+`uv` is available. Fall back to `python -m pip install telethon python-dotenv`
+when it is not.
+
 ## Data Flow
 
 Configuration comes primarily from `.env`. Required values are only

@@ -40,6 +40,8 @@ class SyncTelegramChannelTests(unittest.TestCase):
         self.assertNotIn("TG_SESSION_PATH", first_line)
         self.assertNotIn("TG_PHONE", first_line)
         self.assertNotIn("TG_CHANNEL", first_line)
+        self.assertIn("uv add telethon python-dotenv", result.message)
+        self.assertIn("python -m pip install telethon python-dotenv", result.message)
 
     def test_minimal_env_uses_defaults_and_allows_missing_phone_and_channel(self):
         sync = load_module()
