@@ -1,0 +1,35 @@
+{
+  "skill_name": "telegram-channel-sync",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to archive a Telegram channel I already follow into SQLite. Please set up a reusable Telethon workflow that reads credentials from .env, stores media on disk, and tells me what to put in the .env file if it is missing.",
+      "expected_output": "Uses the bundled telegram-channel-sync script, explains that TG_API_ID and TG_API_HASH are always required, TG_PHONE is required for first login unless an authorized session already exists, includes my.telegram.org guidance, and avoids inventing a new scraper.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Sync this private Telegram channel invite safely: https://t.me/+AbCdEf123456. I do not want my account rate-limited or banned. I want SQLite plus downloaded photos and videos.",
+      "expected_output": "Explains that private channel import is explicit, uses TG_JOIN_INVITE and TG_INVITE_LINK only when authorized, keeps serial/conservative sync defaults, and stores media paths in SQLite.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "My .env is empty and I ran the Telegram sync. What should the tool print, and where do I get TG_API_ID and TG_API_HASH?",
+      "expected_output": "Shows the missing-key checklist for TG_API_ID and TG_API_HASH, mentions https://my.telegram.org -> API Development tools, and explains default session path plus TG_PHONE-based first login/session reuse.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "I need to backfill an entire Telegram channel with no date limit, then rerun later to only collect new messages. Use Telethon and SQLite and make reruns safe.",
+      "expected_output": "Uses iter_messages(limit=None), SQLite sync_state with newest and oldest checkpoints, and idempotent upserts for resumable all-time backfill plus incremental sync.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "The Telegram channel has voice messages. Transcribe them if Telegram supports it, but do not use OpenAI or Whisper. If Premium is required, keep syncing and record the failure.",
+      "expected_output": "Uses Telethon messages.TranscribeAudioRequest for voice messages only, records complete/pending/premium_required/failed statuses, and does not add external STT services.",
+      "files": []
+    }
+  ]
+}
