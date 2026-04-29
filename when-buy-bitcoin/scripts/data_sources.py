@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import pathlib
+import re
 import time
 from typing import Any
 
@@ -17,20 +18,32 @@ DAY_MS = 24 * 60 * 60 * 1000
 BINANCE_START = dt.datetime(2017, 8, 17, tzinfo=UTC)
 BINANCE_API = "https://api.binance.com/api/v3/klines"
 COINGECKO_RANGE_API = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range"
-GLASSNODE_API_ROOT = "https://api.glassnode.com/v1/metrics"
+BITCOIN_LAB_API_ROOT = "https://api.researchbitcoin.net/v2"
 
 
-GLASSNODE_METRICS = {
-    "mvrv_z_score": "market/mvrv_z_score",
-    "mvrv_ratio": "market/mvrv",
-    "realized_price": "market/price_realized_usd",
-    "balanced_price": "indicators/balanced_price_usd",
-    "supply_profit": "supply/profit_sum",
-    "supply_loss": "supply/loss_sum",
-    "lth_supply_profit": "supply/lth_profit_sum",
-    "lth_supply_loss": "supply/lth_loss_sum",
-    "sth_supply_profit": "supply/sth_profit_sum",
-    "sth_supply_loss": "supply/sth_loss_sum",
+ONCHAIN_METRIC_NAMES = (
+    "mvrv_z_score",
+    "mvrv_ratio",
+    "realized_price",
+    "balanced_price",
+    "supply_profit",
+    "supply_loss",
+    "lth_supply_profit",
+    "lth_supply_loss",
+    "sth_supply_profit",
+    "sth_supply_loss",
+)
+
+BITCOIN_LAB_METRICS = {
+    "mvrv_z_score": ("market_value_to_realized_value", "mvrv_z"),
+    "mvrv_ratio": ("market_value_to_realized_value", "mvrv"),
+    "realized_price": ("realizedprice", "realized_price"),
+    "supply_profit": ("supply_in_profitloss", "supply_in_profit"),
+    "supply_loss": ("supply_in_profitloss", "supply_in_loss"),
+    "lth_supply_profit": ("supply_in_profitloss", "supply_in_profit_lth"),
+    "lth_supply_loss": ("supply_in_profitloss", "supply_in_loss_lth"),
+    "sth_supply_profit": ("supply_in_profitloss", "supply_in_profit_sth"),
+    "sth_supply_loss": ("supply_in_profitloss", "supply_in_loss_sth"),
 }
 
 
@@ -49,8 +62,11 @@ def utc_now() -> dt.datetime:
 
 def safe_error(error: Exception | str) -> str:
     message = str(error)
-    if "api_key" in message.lower():
+    lower = message.lower()
+    if any(secret_hint in lower for secret_hint in ("api_key", "api-token", "api_token", "token", "authorization", "bearer")):
         return "API request failed; secret-bearing parameters were redacted."
+    message = re.sub(r"(?i)(api[_-]?key|api[_-]?token|authorization)\s*[:=]\s*[^&\s]+", r"\1=<redacted>", message)
+    message = re.sub(r"(?i)bearer\s+[a-z0-9._~+/-]+", "Bearer <redacted>", message)
     return message[:500]
 
 
@@ -58,14 +74,16 @@ def request_json(
     session: requests.Session,
     url: str,
     params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
     retries: int = 3,
     timeout: int = 20,
 ) -> Any:
     params = params or {}
+    headers = headers or {}
     last_error: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            response = session.get(url, params=params, timeout=timeout)
+            response = session.get(url, params=params, headers=headers, timeout=timeout)
             if response.status_code in {429, 500, 502, 503, 504}:
                 raise RuntimeError(f"{url} returned HTTP {response.status_code}")
             if response.status_code in {401, 403}:
@@ -295,32 +313,73 @@ def latest_numeric_value(payload: Any) -> tuple[float | None, str | None]:
     return None, None
 
 
+def latest_bitcoin_lab_value(payload: Any, data_field: str) -> tuple[float | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, None
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        return None, None
+    for row in reversed(rows):
+        if not isinstance(row, dict):
+            continue
+        raw_value = row.get(data_field)
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        raw_time = row.get("time")
+        date = None
+        if isinstance(raw_time, str):
+            try:
+                date = dt.datetime.fromisoformat(raw_time.replace("Z", "+00:00")).date().isoformat()
+            except ValueError:
+                date = raw_time[:10] or None
+        return value, date
+    return None, None
+
+
 def unavailable_onchain(reason: str) -> dict[str, Any]:
     return {"available": False, "value": None, "date": None, "error": reason}
 
 
-def fetch_glassnode_metrics(api_key: str | None, since: dt.datetime | None = None) -> tuple[dict[str, Any], list[str], str]:
-    if not api_key:
+def bitcoin_lab_query_window(now: dt.datetime | None = None) -> tuple[str, str]:
+    now = now or utc_now()
+    start = (now.astimezone(UTC).date() - dt.timedelta(days=14)).isoformat()
+    end = (now.astimezone(UTC).date() + dt.timedelta(days=1)).isoformat()
+    return start, end
+
+
+def fetch_bitcoin_lab_metrics(api_token: str | None, now: dt.datetime | None = None) -> tuple[dict[str, Any], list[str], str]:
+    if not api_token:
         return (
-            {name: unavailable_onchain("GLASSNODE_API_KEY is not configured.") for name in GLASSNODE_METRICS},
+            {name: unavailable_onchain("BITCOIN_LAB_API_TOKEN is not configured.") for name in ONCHAIN_METRIC_NAMES},
             [],
             "unavailable",
         )
 
-    since = since or BINANCE_START
+    from_time, to_time = bitcoin_lab_query_window(now)
     session = requests.Session()
-    metrics: dict[str, Any] = {}
+    metrics: dict[str, Any] = {
+        "balanced_price": unavailable_onchain("Bitcoin Lab does not expose a direct Balanced Price metric in the configured metric set.")
+    }
     errors: list[str] = []
-    for name, path in GLASSNODE_METRICS.items():
+    headers = {"X-API-Token": api_token}
+    for name, (endpoint, data_field) in BITCOIN_LAB_METRICS.items():
         try:
             payload = request_json(
                 session,
-                f"{GLASSNODE_API_ROOT}/{path}",
-                {"a": "BTC", "i": "24h", "s": int(since.timestamp()), "api_key": api_key},
+                f"{BITCOIN_LAB_API_ROOT}/{endpoint}/{data_field}",
+                {
+                    "resolution": "d1",
+                    "output_format": "json",
+                    "from_time": from_time,
+                    "to_time": to_time,
+                },
+                headers=headers,
                 retries=2,
                 timeout=20,
             )
-            value, date = latest_numeric_value(payload)
+            value, date = latest_bitcoin_lab_value(payload, data_field)
             if value is None:
                 metrics[name] = unavailable_onchain("Metric returned no numeric value.")
             else:
@@ -331,10 +390,12 @@ def fetch_glassnode_metrics(api_key: str | None, since: dt.datetime | None = Non
                     "error": None,
                 }
         except PermissionError:
-            metrics[name] = unavailable_onchain("Metric unavailable due to Glassnode permission or subscription limits.")
+            metrics[name] = unavailable_onchain("Metric unavailable due to Bitcoin Lab permission, quota, or token limits.")
         except Exception as exc:  # noqa: BLE001
             reason = safe_error(exc)
             metrics[name] = unavailable_onchain(reason)
-            errors.append(f"Glassnode {name} unavailable: {reason}")
-    source = "glassnode" if any(metric.get("available") for metric in metrics.values()) else "unavailable"
+            errors.append(f"Bitcoin Lab {name} unavailable: {reason}")
+    for name in ONCHAIN_METRIC_NAMES:
+        metrics.setdefault(name, unavailable_onchain("Metric was not requested."))
+    source = "bitcoin_lab" if any(metric.get("available") for metric in metrics.values()) else "unavailable"
     return metrics, errors, source

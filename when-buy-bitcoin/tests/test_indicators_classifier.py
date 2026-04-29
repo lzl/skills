@@ -98,5 +98,31 @@ class ClassifierTests(unittest.TestCase):
         self.assertEqual(outcome["confidence"], "Medium")
 
 
+class DataSourceTests(unittest.TestCase):
+    def test_bitcoin_lab_latest_value_uses_metric_field_and_iso_time(self):
+        data_sources = load_module("data_sources")
+        payload = {
+            "status": "success",
+            "data": [
+                {"mvrv": "not-a-number", "time": "2026-04-27T00:00:00Z"},
+                {"mvrv": "1.4083", "time": "2026-04-28T00:00:00Z"},
+            ],
+        }
+
+        value, date = data_sources.latest_bitcoin_lab_value(payload, "mvrv")
+
+        self.assertAlmostEqual(value, 1.4083)
+        self.assertEqual(date, "2026-04-28")
+
+    def test_safe_error_redacts_token_like_values(self):
+        data_sources = load_module("data_sources")
+
+        message = data_sources.safe_error("BITCOIN_LAB_API_TOKEN=secret-value Authorization: Bearer also-secret")
+
+        self.assertNotIn("secret-value", message)
+        self.assertNotIn("also-secret", message)
+        self.assertIn("redacted", message.lower())
+
+
 if __name__ == "__main__":
     unittest.main()

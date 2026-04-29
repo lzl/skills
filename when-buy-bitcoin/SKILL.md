@@ -1,6 +1,6 @@
 ---
 name: when-buy-bitcoin
-description: Use this skill whenever the user wants a daily Bitcoin market-regime dashboard, BTC cycle phase read, cautious rules-based buy-zone analysis, or an automation that collects BTC market data, optional Glassnode on-chain data, technical indicators, and a self-contained English HTML report. Prefer this skill for prompts like "when buy bitcoin", "classify BTC market phase", "daily BTC dashboard", "Bitcoin bottom watch", or "rules-based BTC accumulation signal" even when the user does not explicitly mention the skill name.
+description: Use this skill whenever the user wants a daily Bitcoin market-regime dashboard, BTC cycle phase read, cautious rules-based buy-zone analysis, or an automation that collects BTC market data, optional Bitcoin Lab on-chain data, technical indicators, and a self-contained English HTML report. Prefer this skill for prompts like "when buy bitcoin", "classify BTC market phase", "daily BTC dashboard", "Bitcoin bottom watch", or "rules-based BTC accumulation signal" even when the user does not explicitly mention the skill name.
 ---
 
 # When Buy Bitcoin
@@ -33,10 +33,10 @@ fails but cached market data exists, it uses the cache and marks the dashboard
 accordingly. If no live data and no cache are available, it renders an error
 state instead of crashing.
 
-Optional on-chain data comes from Glassnode only when `GLASSNODE_API_KEY` is
-present. Unavailable metrics are marked unavailable and reduce confidence.
-Missing API keys, subscription limits, permission errors, and API failures must
-never stop the dashboard from rendering.
+Optional on-chain data comes from Bitcoin Lab only when
+`BITCOIN_LAB_API_TOKEN` is present. Unavailable metrics are marked unavailable
+and reduce confidence. Missing API keys, quota limits, permission errors, and
+API failures must never stop the dashboard from rendering.
 
 ## Bundled Script
 
@@ -63,7 +63,7 @@ Useful script modes:
 
 - `--offline-sample`: create deterministic synthetic BTC data and render a
   sample dashboard without network access.
-- `--no-onchain`: skip Glassnode and mark on-chain data unavailable.
+- `--no-onchain`: skip Bitcoin Lab and mark on-chain data unavailable.
 - `--json-only`: write only the machine-readable JSON report.
 - `--self-test`: run lightweight formula checks for the indicator functions.
 - `--output-dir DIR`: choose where `when-buy-bitcoin.html` and
@@ -103,7 +103,7 @@ vanilla canvas price chart.
 Optional configuration can come from `.env` or the process environment:
 
 ```dotenv
-GLASSNODE_API_KEY=
+BITCOIN_LAB_API_TOKEN=
 BTC_DASHBOARD_OUTPUT_DIR=output/when-buy-bitcoin
 BTC_DASHBOARD_SYMBOL=BTCUSDT
 BTC_DASHBOARD_MARKET_SOURCE=binance

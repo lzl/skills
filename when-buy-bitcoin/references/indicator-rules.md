@@ -16,23 +16,26 @@ dashboard. Use closed UTC candles for confirmed signals.
 
 ## Optional On-Chain Data
 
-Use Glassnode only when `GLASSNODE_API_KEY` is present.
+Use Bitcoin Lab only when `BITCOIN_LAB_API_TOKEN` is present.
 
 Attempt:
 
-- `market/mvrv_z_score`
-- `market/mvrv`
-- `market/price_realized_usd`
-- `indicators/balanced_price_usd`
-- `supply/profit_sum`
-- `supply/loss_sum`
-- `supply/lth_profit_sum`
-- `supply/lth_loss_sum`
-- `supply/sth_profit_sum`
-- `supply/sth_loss_sum`
+- `/v2/market_value_to_realized_value/mvrv_z`
+- `/v2/market_value_to_realized_value/mvrv`
+- `/v2/realizedprice/realized_price`
+- `/v2/supply_in_profitloss/supply_in_profit`
+- `/v2/supply_in_profitloss/supply_in_loss`
+- `/v2/supply_in_profitloss/supply_in_profit_lth`
+- `/v2/supply_in_profitloss/supply_in_loss_lth`
+- `/v2/supply_in_profitloss/supply_in_profit_sth`
+- `/v2/supply_in_profitloss/supply_in_loss_sth`
 
 Any missing, unauthorized, subscription-limited, or failed metric is unavailable
 and reduces confidence. Do not crash.
+
+Bitcoin Lab does not currently expose a direct Balanced Price metric in the
+configured metric set. Mark Balanced Price unavailable rather than deriving a
+proxy.
 
 ## Indicator Formulas
 

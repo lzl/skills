@@ -63,7 +63,8 @@ def parse_env_file(path: pathlib.Path) -> dict[str, str]:
 def load_environment(env_path: pathlib.Path) -> dict[str, str]:
     values = parse_env_file(env_path)
     merged = dict(values)
-    merged.update({key: value for key, value in os.environ.items() if key.startswith("BTC_") or key in {"GLASSNODE_API_KEY", "TZ"}})
+    allowed_exact = {"BITCOIN_LAB_API_TOKEN", "TZ"}
+    merged.update({key: value for key, value in os.environ.items() if key.startswith("BTC_") or key in allowed_exact})
     return merged
 
 
@@ -288,7 +289,7 @@ def build_signal_state(
     add_missing(missing, trend_signals["weekly_close_above_50w_sma"], "Weekly close above the 50W SMA.")
     add_missing(missing, trend_signals["golden_cross_50d_200d"], "50D / 200D golden cross.")
     if not onchain_available:
-        missing.append("Glassnode on-chain valuation metrics are unavailable; confidence is reduced.")
+        missing.append("Bitcoin Lab on-chain valuation metrics are unavailable; confidence is reduced.")
     if invalidation_level is not None:
         add_missing(missing, trend_signals["weekly_close_above_invalidation_level"], f"Weekly close above configured invalidation level {format_money(invalidation_level)}.")
 
@@ -486,7 +487,7 @@ def run_self_test() -> int:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate the When Buy Bitcoin dashboard.")
     parser.add_argument("--offline-sample", action="store_true", help="Render a deterministic sample dashboard without network access.")
-    parser.add_argument("--no-onchain", action="store_true", help="Skip optional Glassnode on-chain metric collection.")
+    parser.add_argument("--no-onchain", action="store_true", help="Skip optional Bitcoin Lab on-chain metric collection.")
     parser.add_argument("--json-only", action="store_true", help="Write only the machine-readable JSON report.")
     parser.add_argument("--self-test", action="store_true", help="Run lightweight indicator formula checks and exit.")
     parser.add_argument("--env", default=".env", help="Path to optional .env file.")
@@ -518,7 +519,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         latest_price = float(market.data["close"].iloc[-1])
         onchain = (
-            {name: data_sources.unavailable_onchain("--no-onchain was set.") for name in data_sources.GLASSNODE_METRICS}
+            {name: data_sources.unavailable_onchain("--no-onchain was set.") for name in data_sources.ONCHAIN_METRIC_NAMES}
             if args.no_onchain
             else synthetic_onchain(latest_price)
         )
@@ -527,12 +528,13 @@ def main(argv: list[str] | None = None) -> int:
     else:
         market = data_sources.get_market_data(symbol, market_source, cache_dir, now)
         if args.no_onchain:
-            onchain = {name: data_sources.unavailable_onchain("--no-onchain was set.") for name in data_sources.GLASSNODE_METRICS}
+            onchain = {name: data_sources.unavailable_onchain("--no-onchain was set.") for name in data_sources.ONCHAIN_METRIC_NAMES}
             onchain_errors = []
             onchain_source = "skipped"
         else:
-            onchain, onchain_errors, onchain_source = data_sources.fetch_glassnode_metrics(
-                env.get("GLASSNODE_API_KEY")
+            onchain, onchain_errors, onchain_source = data_sources.fetch_bitcoin_lab_metrics(
+                env.get("BITCOIN_LAB_API_TOKEN"),
+                now=now,
             )
 
     report = build_report(symbol, market, onchain, onchain_source, onchain_errors, env, now)
