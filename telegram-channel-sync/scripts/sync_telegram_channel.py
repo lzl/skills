@@ -27,14 +27,14 @@ from typing import Any
 REQUIRED_KEYS = (
     "TG_API_ID",
     "TG_API_HASH",
-    "TG_PHONE",
-    "TG_CHANNEL",
-    "TG_DB_PATH",
-    "TG_MEDIA_DIR",
-    "TG_SESSION_PATH",
 )
 
 DEFAULTS = {
+    "TG_PHONE": "",
+    "TG_CHANNEL": "",
+    "TG_DB_PATH": "./telegram_sync.sqlite3",
+    "TG_MEDIA_DIR": "./telegram_media",
+    "TG_SESSION_PATH": "./telegram_sync.session",
     "TG_JOIN_INVITE": "0",
     "TG_INVITE_LINK": "",
     "TG_USE_TAKEOUT": "auto",
@@ -44,6 +44,7 @@ DEFAULTS = {
     "TG_DOWNLOAD_MEDIA": "1",
     "TG_MAX_MEDIA_BYTES": "0",
     "TG_TRANSCRIBE_VOICE": "1",
+    "TG_SINCE_HOURS": "",
     "TG_LOG_LEVEL": "INFO",
 }
 
@@ -52,13 +53,13 @@ ENV_HELP = """Telegram channel sync requires a .env file with:
 Required:
   TG_API_ID=123456
   TG_API_HASH=your_api_hash_from_my_telegram_org
+
+Optional:
   TG_PHONE=+15551234567
   TG_CHANNEL=@channel_username_or_numeric_id_or_t_me_link
   TG_DB_PATH=./telegram_sync.sqlite3
   TG_MEDIA_DIR=./telegram_media
   TG_SESSION_PATH=./telegram_sync.session
-
-Optional:
   TG_JOIN_INVITE=0
   TG_INVITE_LINK=
   TG_USE_TAKEOUT=auto
@@ -68,11 +69,13 @@ Optional:
   TG_DOWNLOAD_MEDIA=1
   TG_MAX_MEDIA_BYTES=0
   TG_TRANSCRIBE_VOICE=1
+  TG_SINCE_HOURS=
   TG_LOG_LEVEL=INFO
 
 Get TG_API_ID and TG_API_HASH from https://my.telegram.org -> API Development tools.
-The first login may ask for a Telegram login code and 2FA password. Later runs
-reuse TG_SESSION_PATH, so keep that session file private and stable.
+TG_SESSION_PATH defaults to ./telegram_sync.session. The first login may ask for
+a phone number, Telegram login code, and 2FA password. Later runs reuse
+TG_SESSION_PATH, so keep that session file private and stable.
 Install runtime dependencies with:
   python -m pip install telethon python-dotenv
 """
@@ -82,8 +85,8 @@ Install runtime dependencies with:
 class Config:
     api_id: int
     api_hash: str
-    phone: str
-    channel: str
+    phone: str | None
+    channel: str | None
     db_path: pathlib.Path
     media_dir: pathlib.Path
     session_path: pathlib.Path
@@ -96,6 +99,7 @@ class Config:
     download_media: bool
     max_media_bytes: int
     transcribe_voice: bool
+    since_hours: float | None
     log_level: str
     env_path: pathlib.Path
 
@@ -200,6 +204,34 @@ def resolve_env_path(env_path: pathlib.Path, value: str) -> pathlib.Path:
     return (env_path.parent / candidate).resolve()
 
 
+def normalize_channel_ref(value: str) -> str:
+    stripped = value.strip()
+    match = re.search(r"t\.me/c/(\d+)(?:/\d+)?", stripped)
+    if match:
+        return f"-100{match.group(1)}"
+    return stripped
+
+
+def telethon_entity_ref(value: str) -> int | str:
+    stripped = value.strip()
+    if re.fullmatch(r"-?\d+", stripped):
+        return int(stripped)
+    return stripped
+
+
+def apply_runtime_overrides(
+    config: Config,
+    channel: str | None = None,
+    since_hours: float | None = None,
+) -> Config:
+    updates: dict[str, Any] = {}
+    if channel and channel.strip():
+        updates["channel"] = normalize_channel_ref(channel)
+    if since_hours is not None:
+        updates["since_hours"] = since_hours if since_hours > 0 else None
+    return dataclasses.replace(config, **updates)
+
+
 def load_config(env_path: str | pathlib.Path) -> ConfigResult:
     path = pathlib.Path(env_path).expanduser().resolve()
     errors: list[str] = []
@@ -235,6 +267,13 @@ def load_config(env_path: str | pathlib.Path) -> ConfigResult:
     transcribe_voice = parse_bool(
         raw["TG_TRANSCRIBE_VOICE"], "TG_TRANSCRIBE_VOICE", errors
     )
+    since_hours: float | None = None
+    if raw.get("TG_SINCE_HOURS", "").strip():
+        since_hours = parse_float(
+            raw["TG_SINCE_HOURS"], "TG_SINCE_HOURS", errors, minimum=0.0
+        )
+        if since_hours == 0:
+            since_hours = None
 
     use_takeout = raw["TG_USE_TAKEOUT"].strip().lower()
     if use_takeout not in {"auto", "1", "0", "true", "false", "yes", "no"}:
@@ -249,8 +288,8 @@ def load_config(env_path: str | pathlib.Path) -> ConfigResult:
     config = Config(
         api_id=api_id,
         api_hash=raw["TG_API_HASH"].strip(),
-        phone=raw["TG_PHONE"].strip(),
-        channel=raw["TG_CHANNEL"].strip(),
+        phone=raw["TG_PHONE"].strip() or None,
+        channel=normalize_channel_ref(raw["TG_CHANNEL"]) if raw["TG_CHANNEL"].strip() else None,
         db_path=resolve_env_path(path, raw["TG_DB_PATH"].strip()),
         media_dir=resolve_env_path(path, raw["TG_MEDIA_DIR"].strip()),
         session_path=resolve_env_path(path, raw["TG_SESSION_PATH"].strip()),
@@ -263,6 +302,7 @@ def load_config(env_path: str | pathlib.Path) -> ConfigResult:
         download_media=download_media,
         max_media_bytes=max_media,
         transcribe_voice=transcribe_voice,
+        since_hours=since_hours,
         log_level=raw["TG_LOG_LEVEL"].strip().upper() or "INFO",
         env_path=path,
     )
@@ -778,6 +818,8 @@ def looks_like_invite_ref(value: str) -> bool:
 
 
 async def resolve_entity(client: Any, config: Config) -> Any:
+    if not config.channel:
+        raise SetupError("No channel specified. Set TG_CHANNEL or pass CHANNEL/--channel.")
     if config.join_invite:
         _, _, functions = require_telethon()
         invite_hash = extract_invite_hash(config.invite_link)
@@ -787,14 +829,14 @@ async def resolve_entity(client: Any, config: Config) -> Any:
         if chats:
             return chats[0]
         logging.info("Invite import did not return chats; resolving TG_CHANNEL.")
-        return await client.get_entity(config.channel)
+        return await client.get_entity(telethon_entity_ref(config.channel))
 
     if looks_like_invite_ref(config.channel):
         raise SetupError(
             "TG_CHANNEL looks like a private invite link, but TG_JOIN_INVITE is not 1. "
             "Join the channel manually first, or set TG_JOIN_INVITE=1 with TG_INVITE_LINK."
         )
-    return await client.get_entity(config.channel)
+    return await client.get_entity(telethon_entity_ref(config.channel))
 
 
 async def sync_channel_history(
@@ -804,6 +846,16 @@ async def sync_channel_history(
     channel_id: int,
     config: Config,
 ) -> None:
+    state = get_sync_state(conn, channel_id)
+    if config.since_hours is not None:
+        await sync_recent_window(client, conn, entity, channel_id, config)
+        conn.execute(
+            "UPDATE channels SET last_synced_at = ?, updated_at = ? WHERE id = ?",
+            (utc_now(), utc_now(), channel_id),
+        )
+        conn.commit()
+        return
+
     state = get_sync_state(conn, channel_id)
     newest = int(state["newest_synced_id"])
 
@@ -844,6 +896,43 @@ async def sync_channel_history(
         (utc_now(), utc_now(), channel_id),
     )
     conn.commit()
+
+
+async def sync_recent_window(
+    client: Any,
+    conn: sqlite3.Connection,
+    entity: Any,
+    channel_id: int,
+    config: Config,
+) -> None:
+    assert config.since_hours is not None
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=config.since_hours)
+    logging.info("Syncing messages since %s.", cutoff.isoformat())
+    _, errors, _ = require_telethon()
+    while True:
+        try:
+            async for message in client.iter_messages(
+                entity,
+                limit=None,
+                wait_time=config.wait_time_seconds,
+            ):
+                message_date = getattr(message, "date", None)
+                if isinstance(message_date, dt.datetime):
+                    if message_date.tzinfo is None:
+                        message_date = message_date.replace(tzinfo=dt.timezone.utc)
+                    if message_date < cutoff:
+                        update_sync_state(conn, channel_id, last_error=None)
+                        return
+                await process_message(client, conn, entity, channel_id, message, config)
+                current_state = get_sync_state(conn, channel_id)
+                fields: dict[str, Any] = {"last_error": None}
+                if int(message.id) > int(current_state["newest_synced_id"]):
+                    fields["newest_synced_id"] = int(message.id)
+                update_sync_state(conn, channel_id, **fields)
+                await jitter_sleep(config)
+            return
+        except errors.FloodWaitError as exc:
+            await handle_flood_wait(conn, channel_id, int(exc.seconds), config)
 
 
 async def iter_phase(
@@ -1112,7 +1201,7 @@ async def run_sync(config: Config) -> int:
         await client.connect()
         if not await client.is_user_authorized():
             logging.info(
-                "First login may ask for a Telegram code and 2FA password; "
+                "First login may ask for a phone number, Telegram code, and 2FA password; "
                 "future runs reuse %s.",
                 config.session_path,
             )
@@ -1182,7 +1271,8 @@ def command_doctor(args: argparse.Namespace) -> int:
     print(f"Database: {config.db_path}")
     print(f"Media dir: {config.media_dir}")
     print(f"Session: {config.session_path}")
-    print(f"Channel: {config.channel}")
+    print(f"Phone: {config.phone or '(not set; Telethon will prompt on first login)'}")
+    print(f"Channel: {config.channel or '(not set; pass CHANNEL/--channel to sync)'}")
     print(f"Join private invite: {config.join_invite}")
     missing: list[str] = []
     if importlib.util.find_spec("telethon") is None:
@@ -1207,8 +1297,17 @@ def command_sync(args: argparse.Namespace) -> int:
         print(result.message, file=sys.stderr)
         return 1
     assert result.config is not None
+    channel = args.channel_option or args.channel_arg
+    config = apply_runtime_overrides(
+        result.config,
+        channel=channel,
+        since_hours=args.since_hours,
+    )
+    if not config.channel:
+        print("No channel specified. Set TG_CHANNEL or pass CHANNEL/--channel.", file=sys.stderr)
+        return 1
     try:
-        return asyncio.run(run_sync(result.config))
+        return asyncio.run(run_sync(config))
     except SetupError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -1231,7 +1330,24 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.set_defaults(func=command_doctor)
 
     sync = subparsers.add_parser("sync", help="Run resumable channel sync.")
+    sync.add_argument(
+        "channel_arg",
+        nargs="?",
+        help="Channel username/id/link. Overrides TG_CHANNEL when provided.",
+    )
     sync.add_argument("--env", default=".env", help="Path to .env file.")
+    sync.add_argument(
+        "--channel",
+        dest="channel_option",
+        default=None,
+        help="Channel username/id/link. Overrides TG_CHANNEL.",
+    )
+    sync.add_argument(
+        "--since-hours",
+        type=float,
+        default=None,
+        help="Only sync messages from the last N hours; overrides TG_SINCE_HOURS.",
+    )
     sync.set_defaults(func=command_sync)
     return parser
 

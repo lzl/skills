@@ -33,7 +33,37 @@ class SyncTelegramChannelTests(unittest.TestCase):
         self.assertIn("TG_API_HASH", result.message)
         self.assertIn("https://my.telegram.org", result.message)
         self.assertIn("API Development tools", result.message)
-        self.assertIn("TG_SESSION_PATH", result.message)
+        self.assertIn("Missing required keys: TG_API_ID, TG_API_HASH", result.message)
+        first_line = next(
+            line for line in result.message.splitlines() if line.startswith("Missing")
+        )
+        self.assertNotIn("TG_SESSION_PATH", first_line)
+        self.assertNotIn("TG_PHONE", first_line)
+        self.assertNotIn("TG_CHANNEL", first_line)
+
+    def test_minimal_env_uses_defaults_and_allows_missing_phone_and_channel(self):
+        sync = load_module()
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_path = pathlib.Path(tmp_dir) / ".env"
+            env_path.write_text(
+                "\n".join(
+                    [
+                        "TG_API_ID=123456",
+                        "TG_API_HASH=0123456789abcdef0123456789abcdef",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            result = sync.load_config(env_path)
+
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.config.phone)
+        self.assertIsNone(result.config.channel)
+        self.assertEqual(result.config.db_path.name, "telegram_sync.sqlite3")
+        self.assertEqual(result.config.media_dir.name, "telegram_media")
+        self.assertEqual(result.config.session_path.name, "telegram_sync.session")
 
     def test_validate_env_parses_required_and_optional_values(self):
         sync = load_module()
@@ -59,6 +89,7 @@ class SyncTelegramChannelTests(unittest.TestCase):
                         "TG_DOWNLOAD_MEDIA=0",
                         "TG_MAX_MEDIA_BYTES=1048576",
                         "TG_TRANSCRIBE_VOICE=0",
+                        "TG_SINCE_HOURS=24",
                     ]
                 ),
                 encoding="utf-8",
@@ -75,6 +106,40 @@ class SyncTelegramChannelTests(unittest.TestCase):
         self.assertIs(result.config.download_media, False)
         self.assertEqual(result.config.max_media_bytes, 1048576)
         self.assertIs(result.config.transcribe_voice, False)
+        self.assertEqual(result.config.since_hours, 24.0)
+
+    def test_normalize_channel_ref_converts_private_message_link_to_peer_id(self):
+        sync = load_module()
+
+        normalized = sync.normalize_channel_ref("https://t.me/c/1445373305/27567")
+
+        self.assertEqual(normalized, "-1001445373305")
+
+    def test_apply_runtime_overrides_accepts_channel_argument(self):
+        sync = load_module()
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_path = pathlib.Path(tmp_dir) / ".env"
+            env_path.write_text(
+                "\n".join(
+                    [
+                        "TG_API_ID=123456",
+                        "TG_API_HASH=0123456789abcdef0123456789abcdef",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            result = sync.load_config(env_path)
+
+        config = sync.apply_runtime_overrides(
+            result.config,
+            channel="https://t.me/c/1445373305/27567",
+            since_hours=24,
+        )
+
+        self.assertEqual(config.channel, "-1001445373305")
+        self.assertEqual(config.since_hours, 24)
 
     def test_classify_message_excludes_stickers_dice_and_empty_messages(self):
         sync = load_module()

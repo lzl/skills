@@ -14,7 +14,8 @@ commands:
 
 ```bash
 python scripts/sync_telegram_channel.py doctor --env .env
-python scripts/sync_telegram_channel.py sync --env .env
+python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567
+python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567 --since-hours 24
 ```
 
 `doctor` validates `.env` and dependencies without contacting Telegram. `sync`
@@ -26,11 +27,17 @@ The first login may prompt for Telegram code and 2FA. Later runs reuse
 
 ## Data Flow
 
-Configuration comes only from `.env`. Required values are `TG_API_ID`,
-`TG_API_HASH`, `TG_PHONE`, `TG_CHANNEL`, `TG_DB_PATH`, `TG_MEDIA_DIR`, and
-`TG_SESSION_PATH`. Missing or invalid configuration prints a checklist and
-explains that API credentials come from `https://my.telegram.org` under
-"API Development tools".
+Configuration comes primarily from `.env`. Required values are only
+`TG_API_ID` and `TG_API_HASH`. `TG_PHONE`, `TG_CHANNEL`, `TG_DB_PATH`,
+`TG_MEDIA_DIR`, and `TG_SESSION_PATH` are optional. Missing or invalid required
+configuration prints a checklist and explains that API credentials come from
+`https://my.telegram.org` under "API Development tools".
+
+Default paths are `./telegram_sync.sqlite3`, `./telegram_media`, and
+`./telegram_sync.session`. `TG_SESSION_PATH` is a local Telethon session path,
+not a value from Telegram. `TG_CHANNEL` can be omitted when the user passes a
+runtime channel argument or `--channel`; `TG_PHONE` can be omitted for
+interactive first login or when an existing session is available.
 
 SQLite stores channel identity, included messages, media metadata,
 transcription status, and sync checkpoints. Media bytes are written to
@@ -46,6 +53,11 @@ Backfill uses `iter_messages(limit=None, wait_time=...)`. Reruns use SQLite
 checkpoints: `newest_synced_id` for incremental messages and
 `oldest_attempted_id` for historical continuation. Upserts make repeated runs
 safe.
+
+Recent-window sync uses `--since-hours N` or `TG_SINCE_HOURS=N` to iterate from
+newest to oldest and stop once message dates fall before the cutoff. Links like
+`https://t.me/c/1445373305/27567` are normalized to `-1001445373305`; the
+Telegram account still needs access to the private channel.
 
 Private invite import is disabled by default. Users must explicitly configure
 `TG_JOIN_INVITE=1` and `TG_INVITE_LINK` to import an invite once.

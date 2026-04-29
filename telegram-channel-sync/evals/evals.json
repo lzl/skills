@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "I need to archive a Telegram channel I already follow into SQLite. Please set up a reusable Telethon workflow that reads credentials from .env, stores media on disk, and tells me what to put in the .env file if it is missing.",
-      "expected_output": "Uses the bundled telegram-channel-sync script, provides the required .env keys including my.telegram.org guidance, and avoids inventing a new scraper.",
+      "expected_output": "Uses the bundled telegram-channel-sync script, explains that TG_API_ID and TG_API_HASH are the only required .env keys, includes my.telegram.org guidance, and avoids inventing a new scraper.",
       "files": []
     },
     {
@@ -16,7 +16,7 @@
     {
       "id": 3,
       "prompt": "My .env is empty and I ran the Telegram sync. What should the tool print, and where do I get TG_API_ID and TG_API_HASH?",
-      "expected_output": "Shows the missing-key checklist, mentions https://my.telegram.org -> API Development tools, and explains first login/session reuse.",
+      "expected_output": "Shows the missing-key checklist for TG_API_ID and TG_API_HASH, mentions https://my.telegram.org -> API Development tools, and explains default session path plus first login/session reuse.",
       "files": []
     },
     {

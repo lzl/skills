@@ -26,7 +26,8 @@ From this skill directory:
 
 ```bash
 python scripts/sync_telegram_channel.py doctor --env .env
-python scripts/sync_telegram_channel.py sync --env .env
+python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567
+python scripts/sync_telegram_channel.py sync --env .env https://t.me/c/1445373305/27567 --since-hours 24
 ```
 
 Install runtime dependencies if `doctor` reports they are missing:
@@ -45,16 +46,16 @@ Required:
 ```dotenv
 TG_API_ID=123456
 TG_API_HASH=your_api_hash_from_my_telegram_org
-TG_PHONE=+15551234567
-TG_CHANNEL=@channel_username_or_numeric_id_or_t_me_link
-TG_DB_PATH=./telegram_sync.sqlite3
-TG_MEDIA_DIR=./telegram_media
-TG_SESSION_PATH=./telegram_sync.session
 ```
 
 Optional:
 
 ```dotenv
+TG_PHONE=+15551234567
+TG_CHANNEL=@channel_username_or_numeric_id_or_t_me_link
+TG_DB_PATH=./telegram_sync.sqlite3
+TG_MEDIA_DIR=./telegram_media
+TG_SESSION_PATH=./telegram_sync.session
 TG_JOIN_INVITE=0
 TG_INVITE_LINK=
 TG_USE_TAKEOUT=auto
@@ -64,11 +65,23 @@ TG_MAX_AUTO_SLEEP_SECONDS=3600
 TG_DOWNLOAD_MEDIA=1
 TG_MAX_MEDIA_BYTES=0
 TG_TRANSCRIBE_VOICE=1
+TG_SINCE_HOURS=
 TG_LOG_LEVEL=INFO
 ```
 
 Explain missing `TG_API_ID` and `TG_API_HASH` plainly: the user gets them from
 `https://my.telegram.org` under "API Development tools".
+
+`TG_SESSION_PATH` defaults to `./telegram_sync.session`; the user does not get
+it from Telegram. It is the local Telethon session file created on first login.
+
+`TG_PHONE` is optional. If it is absent and there is no existing session file,
+Telethon will prompt for a phone number during interactive login. For automated
+runs, set `TG_PHONE`.
+
+`TG_CHANNEL` is optional when the user passes the channel as a command argument
+or with `--channel`. This is useful when the user may provide arbitrary channel
+links at runtime.
 
 ## What Gets Stored
 
@@ -111,6 +124,7 @@ Keep the default workflow conservative:
 - One channel per run.
 - Serial history, media, and transcription operations.
 - `iter_messages(limit=None, wait_time=...)` for all-time history.
+- `--since-hours N` or `TG_SINCE_HOURS=N` for bounded recent-window syncs.
 - Idempotent SQLite upserts so reruns are safe.
 - Incremental sync after `newest_synced_id`.
 - Historical backfill resume from `oldest_attempted_id`.
@@ -157,3 +171,9 @@ python -m pip install telethon python-dotenv
 If Telegram reports a long FloodWait, do not retry in a loop. Wait for the
 reported seconds, then rerun the same command. The SQLite checkpoint preserves
 progress after each processed message.
+
+For links like `https://t.me/c/1445373305/27567`, use the link as `TG_CHANNEL`
+or pass it through the script as the positional `CHANNEL` argument or `--channel`.
+The script normalizes this private-channel message URL to the Telethon-style
+channel reference `-1001445373305`; the Telegram account still needs to be a
+member of that private channel.
