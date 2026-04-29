@@ -50,6 +50,9 @@ The first `sync` run creates `TG_SESSION_PATH` through phone-code login using
 `TG_PHONE`. Telegram may ask for a login code and cloud password. Later runs
 reuse `TG_SESSION_PATH`; keep that session file private.
 
+By default, runtime artifacts for this skill are written under
+`./output/telegram-channel-sync/` so generated data stays grouped by skill.
+
 ## .env Template
 
 Always required:
@@ -69,9 +72,9 @@ Optional:
 
 ```dotenv
 TG_CHANNEL=@channel_username_or_numeric_id_or_t_me_link
-TG_DB_PATH=./telegram_sync.sqlite3
-TG_MEDIA_DIR=./telegram_media
-TG_SESSION_PATH=./telegram_sync.session
+TG_DB_PATH=./output/telegram-channel-sync/telegram_sync.sqlite3
+TG_MEDIA_DIR=./output/telegram-channel-sync/telegram_media
+TG_SESSION_PATH=./output/telegram-channel-sync/telegram_sync.session
 TG_JOIN_INVITE=0
 TG_INVITE_LINK=
 TG_USE_TAKEOUT=auto
@@ -88,8 +91,9 @@ TG_LOG_LEVEL=INFO
 Explain missing `TG_API_ID` and `TG_API_HASH` plainly: the user gets them from
 `https://my.telegram.org` under "API Development tools".
 
-`TG_SESSION_PATH` defaults to `./telegram_sync.session`; the user does not get
-it from Telegram. It is the local Telethon session file created on first login.
+`TG_SESSION_PATH` defaults to
+`./output/telegram-channel-sync/telegram_sync.session`; the user does not get it
+from Telegram. It is the local Telethon session file created on first login.
 
 `TG_PHONE` is required to create a new session. It may be omitted only when
 `TG_SESSION_PATH` already points to an authorized Telethon session.
@@ -113,6 +117,9 @@ Media bytes are not stored as SQLite BLOBs. They are saved under:
 ```text
 TG_MEDIA_DIR/<channel_id>/<message_id>/<media_kind>.<ext>
 ```
+
+With the default `TG_MEDIA_DIR`, media paths live under
+`./output/telegram-channel-sync/telegram_media/...`.
 
 Included message types:
 

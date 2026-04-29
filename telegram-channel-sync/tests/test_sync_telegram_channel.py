@@ -60,12 +60,25 @@ class SyncTelegramChannelTests(unittest.TestCase):
             )
             result = sync.load_config(env_path)
 
-        self.assertTrue(result.ok)
-        self.assertIsNone(result.config.phone)
-        self.assertIsNone(result.config.channel)
-        self.assertEqual(result.config.db_path.name, "telegram_sync.sqlite3")
-        self.assertEqual(result.config.media_dir.name, "telegram_media")
-        self.assertEqual(result.config.session_path.name, "telegram_sync.session")
+            expected_output_dir = (
+                env_path.resolve().parent / "output" / "telegram-channel-sync"
+            )
+
+            self.assertTrue(result.ok)
+            self.assertIsNone(result.config.phone)
+            self.assertIsNone(result.config.channel)
+            self.assertEqual(
+                result.config.db_path,
+                expected_output_dir / "telegram_sync.sqlite3",
+            )
+            self.assertEqual(
+                result.config.media_dir,
+                expected_output_dir / "telegram_media",
+            )
+            self.assertEqual(
+                result.config.session_path,
+                expected_output_dir / "telegram_sync.session",
+            )
 
     def test_missing_phone_message_explains_first_login_requirement(self):
         sync = load_module()

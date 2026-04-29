@@ -40,10 +40,11 @@ Missing or invalid required configuration prints a checklist and explains that
 API credentials come from `https://my.telegram.org` under "API Development
 tools".
 
-Default paths are `./telegram_sync.sqlite3`, `./telegram_media`, and
-`./telegram_sync.session`. `TG_SESSION_PATH` is a local Telethon session path,
-not a value from Telegram. `TG_CHANNEL` can be omitted when the user passes a
-runtime channel argument or `--channel`.
+Default runtime paths are grouped under `./output/telegram-channel-sync/`:
+`telegram_sync.sqlite3`, `telegram_media`, and `telegram_sync.session`.
+`TG_SESSION_PATH` is a local Telethon session path, not a value from Telegram.
+`TG_CHANNEL` can be omitted when the user passes a runtime channel argument or
+`--channel`.
 
 SQLite stores channel identity, included messages, media metadata,
 transcription status, and sync checkpoints. Media bytes are written to

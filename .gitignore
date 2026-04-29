@@ -1,7 +1,2 @@
 .env
-*.env
-*.session
-*.session-journal
-telegram_media/
-telegram_sync.sqlite3
-telegram_sync.sqlite3-*
+output/

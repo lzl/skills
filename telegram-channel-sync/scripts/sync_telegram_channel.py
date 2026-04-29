@@ -32,9 +32,9 @@ REQUIRED_KEYS = (
 DEFAULTS = {
     "TG_PHONE": "",
     "TG_CHANNEL": "",
-    "TG_DB_PATH": "./telegram_sync.sqlite3",
-    "TG_MEDIA_DIR": "./telegram_media",
-    "TG_SESSION_PATH": "./telegram_sync.session",
+    "TG_DB_PATH": "./output/telegram-channel-sync/telegram_sync.sqlite3",
+    "TG_MEDIA_DIR": "./output/telegram-channel-sync/telegram_media",
+    "TG_SESSION_PATH": "./output/telegram-channel-sync/telegram_sync.session",
     "TG_JOIN_INVITE": "0",
     "TG_INVITE_LINK": "",
     "TG_USE_TAKEOUT": "auto",
@@ -61,9 +61,9 @@ Required for first login when TG_SESSION_PATH is not already authorized:
 
 Optional:
   TG_CHANNEL=@channel_username_or_numeric_id_or_t_me_link
-  TG_DB_PATH=./telegram_sync.sqlite3
-  TG_MEDIA_DIR=./telegram_media
-  TG_SESSION_PATH=./telegram_sync.session
+  TG_DB_PATH=./output/telegram-channel-sync/telegram_sync.sqlite3
+  TG_MEDIA_DIR=./output/telegram-channel-sync/telegram_media
+  TG_SESSION_PATH=./output/telegram-channel-sync/telegram_sync.session
   TG_JOIN_INVITE=0
   TG_INVITE_LINK=
   TG_USE_TAKEOUT=auto
@@ -77,9 +77,10 @@ Optional:
   TG_LOG_LEVEL=INFO
 
 Get TG_API_ID and TG_API_HASH from https://my.telegram.org -> API Development tools.
-TG_SESSION_PATH defaults to ./telegram_sync.session. The first login uses
-TG_PHONE and may ask for a Telegram login code and cloud password. Later runs
-reuse TG_SESSION_PATH, so keep that session file private and stable.
+TG_SESSION_PATH defaults to ./output/telegram-channel-sync/telegram_sync.session.
+The first login uses TG_PHONE and may ask for a Telegram login code and cloud
+password. Later runs reuse TG_SESSION_PATH, so keep that session file private
+and stable.
 Install runtime dependencies with:
   uv run --with telethon --with python-dotenv python scripts/sync_telegram_channel.py doctor --env .env
 or, without uv:
